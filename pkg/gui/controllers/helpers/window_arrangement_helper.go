@@ -249,6 +249,11 @@ func getMidSectionWeights(args WindowArrangementArgs) (int, int) {
 		mainSectionWeight = sideSectionWeight * 5 // need to shrink side panel to make way for main panels if side-by-side
 	}
 
+	if sidePanelsSideBySide(args) {
+		// halves the side section's share of the height
+		mainSectionWeight = mainSectionWeight*2 + sideSectionWeight
+	}
+
 	if args.CurrentWindow == "main" || args.CurrentWindow == "secondary" {
 		if args.ScreenMode == types.SCREEN_HALF || args.ScreenMode == types.SCREEN_FULL {
 			sideSectionWeight = 0
@@ -423,6 +428,22 @@ func getDefaultStashWindowBox(args WindowArrangementArgs, window string) *boxlay
 	return box
 }
 
+func sidePanelsSideBySide(args WindowArrangementArgs) bool {
+	if !shouldUsePortraitMode(args) {
+		return false
+	}
+
+	columnCount := 0
+	for _, window := range sideWindowNames(args.UserConfig) {
+		if args.ActiveViewForWindow(window) != "status" {
+			columnCount++
+		}
+	}
+
+	const minSideBySidePanelWidth = 30
+	return args.Width >= columnCount*minSideBySidePanelWidth
+}
+
 func sidePanelChildren(args WindowArrangementArgs) func(width int, height int) []*boxlayout.Box {
 	return func(width int, height int) []*boxlayout.Box {
 		windows := sideWindowNames(args.UserConfig)
@@ -460,7 +481,27 @@ func sidePanelChildren(args WindowArrangementArgs) func(width int, height int) [
 			}
 
 			return boxForEachWindow(fullHeightBox)
-		} else if height >= minHeightForNormalLayout {
+		}
+
+		if sidePanelsSideBySide(args) {
+			boxes := []*boxlayout.Box{}
+			columns := []*boxlayout.Box{}
+			for _, window := range windows {
+				if args.ActiveViewForWindow(window) == "status" {
+					boxes = append(boxes, &boxlayout.Box{Window: window, Size: 3})
+				} else {
+					columns = append(columns, &boxlayout.Box{Window: window, Weight: 1})
+				}
+			}
+
+			return append(boxes, &boxlayout.Box{
+				Direction: boxlayout.COLUMN,
+				Weight:    1,
+				Children:  columns,
+			})
+		}
+
+		if height >= minHeightForNormalLayout {
 			if args.UserConfig.Gui.ShrinkSidePanelsToContent {
 				if boxes, ok := shrinkToContentSidePanelBoxes(args, windows, height); ok {
 					return boxes
